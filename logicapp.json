@@ -1,0 +1,217 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.27.1.19265",
+      "templateHash": "12865927688295960382"
+    }
+  },
+  "parameters": {
+    "workflows_laConsAITest_name": {
+      "type": "string",
+      "defaultValue": "laConsAITest02"
+    },
+    "connections_azureblob_1_externalid": {
+      "type": "string",
+      "defaultValue": "/subscriptions/7e5e0ef1-4999-48f8-9ec4-9a24cdade7c9/resourceGroups/rg-int-test/providers/Microsoft.Web/connections/azureblob-1"
+    },
+    "connections_azureopenai_3_externalid": {
+      "type": "string",
+      "defaultValue": "/subscriptions/7e5e0ef1-4999-48f8-9ec4-9a24cdade7c9/resourceGroups/rg-int-test/providers/Microsoft.Web/connections/azureopenai-3"
+    },
+    "connections_sharepointonline_1_externalid": {
+      "type": "string",
+      "defaultValue": "/subscriptions/7e5e0ef1-4999-48f8-9ec4-9a24cdade7c9/resourceGroups/rg-int-test/providers/Microsoft.Web/connections/sharepointonline-1"
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Logic/workflows",
+      "apiVersion": "2017-07-01",
+      "name": "[parameters('workflows_laConsAITest_name')]",
+      "location": "uksouth",
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "properties": {
+        "state": "Enabled",
+        "definition": {
+          "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+          "contentVersion": "1.0.0.0",
+          "parameters": {
+            "$connections": {
+              "defaultValue": {},
+              "type": "Object"
+            }
+          },
+          "triggers": {
+            "BlobAdded": {
+              "recurrence": {
+                "interval": 1,
+                "frequency": "Minute"
+              },
+              "evaluatedRecurrence": {
+                "interval": 1,
+                "frequency": "Minute"
+              },
+              "splitOn": "@triggerBody()",
+              "metadata": {
+                "JTJmZmlsZXM=": "/files"
+              },
+              "type": "ApiConnection",
+              "inputs": {
+                "host": {
+                  "connection": {
+                    "name": "@parameters('$connections')['azureblob']['connectionId']"
+                  }
+                },
+                "method": "get",
+                "path": "/v2/datasets/@{encodeURIComponent(encodeURIComponent('lahellologicapps'))}/triggers/batch/onupdatedfile",
+                "queries": {
+                  "folderId": "JTJmZmlsZXM=",
+                  "maxFileCount": 10,
+                  "checkBothCreatedAndModifiedDateTime": false
+                }
+              }
+            }
+          },
+          "actions": {
+            "Creates_a_completion_for_the_chat_message": {
+              "runAfter": {
+                "Parse_a_document": [
+                  "Succeeded"
+                ]
+              },
+              "type": "ApiConnection",
+              "inputs": {
+                "host": {
+                  "connection": {
+                    "name": "@parameters('$connections')['azureopenai-1']['connectionId']"
+                  }
+                },
+                "method": "post",
+                "body": {
+                  "messages": [
+                    {
+                      "role": "system",
+                      "content": "You are an assistant that generates professional and concise meeting minutes."
+                    },
+                    {
+                      "role": "user",
+                      "content": "Here is the meeting transcript:\\n@{body('Parse_a_document')?['text']}\\n\\nPlease summarize it into meeting minutes with this format:\\n- Title of meeting\\n- Date\\n- Attendees\\n- Agenda items discussed\\n- Decisions made\\n- Action items with owners and due dates"
+                    }
+                  ],
+                  "temperature": 1,
+                  "top_p": 1,
+                  "stream": false,
+                  "max_tokens": 4096,
+                  "presence_penalty": 0,
+                  "frequency_penalty": 0,
+                  "n": 1,
+                  "seed": 0,
+                  "logprobs": false,
+                  "response_format": {
+                    "type": "text"
+                  }
+                },
+                "path": "/2024-02-15-preview/deployments/@{encodeURIComponent('gpt-4')}/chat/completions",
+                "queries": {
+                  "api-version": "2024-12-01-preview"
+                }
+              }
+            },
+            "Create_file": {
+              "runAfter": {
+                "Creates_a_completion_for_the_chat_message": [
+                  "Succeeded"
+                ]
+              },
+              "type": "ApiConnection",
+              "inputs": {
+                "host": {
+                  "connection": {
+                    "name": "@parameters('$connections')['sharepointonline']['connectionId']"
+                  }
+                },
+                "method": "post",
+                "body": "@body('Creates_a_completion_for_the_chat_message')['choices'][0]['message']['content']",
+                "path": "/datasets/@{encodeURIComponent(encodeURIComponent('https://microsofteur.sharepoint.com/teams/DCGlobalHack'))}/files",
+                "queries": {
+                  "folderPath": "/SitePages",
+                  "name": "MeetingMinutes_@{guid()}.txt",
+                  "queryParametersSingleEncoded": true
+                }
+              },
+              "runtimeConfiguration": {
+                "contentTransfer": {
+                  "transferMode": "Chunked"
+                }
+              }
+            },
+            "Get_blob_content_(V2)": {
+              "runAfter": {},
+              "type": "ApiConnection",
+              "inputs": {
+                "host": {
+                  "connection": {
+                    "name": "@parameters('$connections')['azureblob']['connectionId']"
+                  }
+                },
+                "method": "get",
+                "path": "/v2/datasets/@{encodeURIComponent(encodeURIComponent('lahellologicapps'))}/files/@{encodeURIComponent(encodeURIComponent(triggerOutputs()?['body/Path']))}/content",
+                "queries": {
+                  "inferContentType": true
+                }
+              }
+            },
+            "Parse_a_document": {
+              "runAfter": {
+                "Get_blob_content_(V2)": [
+                  "Succeeded"
+                ]
+              },
+              "type": "ParseDocument",
+              "inputs": {
+                "content": "@body('Get_blob_content_(V2)')"
+              }
+            }
+          },
+          "outputs": {}
+        },
+        "parameters": {
+          "$connections": {
+            "value": {
+              "azureblob": {
+                "id": "/subscriptions/7e5e0ef1-4999-48f8-9ec4-9a24cdade7c9/providers/Microsoft.Web/locations/uksouth/managedApis/azureblob",
+                "connectionId": "[parameters('connections_azureblob_1_externalid')]",
+                "connectionName": "azureblob-1",
+                "connectionProperties": {
+                  "authentication": {
+                    "type": "ManagedServiceIdentity"
+                  }
+                }
+              },
+              "azureopenai-1": {
+                "id": "/subscriptions/7e5e0ef1-4999-48f8-9ec4-9a24cdade7c9/providers/Microsoft.Web/locations/uksouth/managedApis/azureopenai",
+                "connectionId": "[parameters('connections_azureopenai_3_externalid')]",
+                "connectionName": "azureopenai-3",
+                "connectionProperties": {
+                  "authentication": {
+                    "type": "ManagedServiceIdentity"
+                  }
+                }
+              },
+              "sharepointonline": {
+                "id": "/subscriptions/7e5e0ef1-4999-48f8-9ec4-9a24cdade7c9/providers/Microsoft.Web/locations/uksouth/managedApis/sharepointonline",
+                "connectionId": "[parameters('connections_sharepointonline_1_externalid')]",
+                "connectionName": "sharepointonline-1"
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}
